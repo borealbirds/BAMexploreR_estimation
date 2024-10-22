@@ -7,12 +7,14 @@
 
 #'@param aoi "Area of Interest". Defined and created via Melina's function(s). 
 #'
-#'@param species The species to be summarised. A `character` with names denoting the species of interest. Names must be of one type: common, scientific, or four letter bird codes.   
-#' This argument needs to be integrated with `sppList()`
-#' 
 #'@param year A character vector specifying the year(s) to estimate populations from. Data are available at five year intervals starting from 1985, e.g. "1985", "1990",..."2020". 
 #'
 #'@param version Either "v4" or "v5", indicating which version of the BAM National Models to analyse.
+#'
+#'@param species The species to be summarised. A `character` with names denoting the species of interest. Names must be of one type: common, scientific, or four letter bird codes.   
+#' This argument needs to be integrated with `sppList()`
+#' 
+#'@param type Optional. Indicate the type of names being used; one of "species_code" (FLBC), "commonName", or "scientificName". If left blank, the function will attempt to identify the type.
 #'
 #'@return A population estimate (or estimates) of the mean and standard deviation density of males per hectare. 
 #'
@@ -32,14 +34,22 @@ root <- "G:/Shared drives/BAM_NationalModels5"
 
 # since the resolution of the raster is 1000×1000 meters, each cell represents 1,000,000 square meters (1 km2).
 aoi <- terra::rast(x=file.path(root, "output", "mosaics", "extrapolation", "BAWW_1_1985.tiff"))
-files <- list.files(file.path(root, "output", "extrapolation", "CAWA"))
+
+# connect to google drive
+googledrive::drive_auth(scopes = "https://www.googleapis.com/auth/drive.readonly")
 
 
-# raster retrieval will happen via Melina's functions (user can input BCRs, AOI, etc. and get a masked raster)
-bamexplorer_pop <- function(aoi, species, year, version){
+
+
+# TO DO: Inspect `getlayerNM` to avoid replicating effort. This function should only work downstream of getlayerNM.
+
+bamexplorer_pop <- function(aoi, year, version, species, type){
   
-  # parse users' species type
-  if (nchar(species[1]) == 4){
+  
+  # identify users' species type
+  if (type %in% c("species_code", "commonName", "scientificName")){
+    type <- type
+  } else if (nchar(species[1]) == 4){
     type <- "species_code"
   } else if (grepl("^[A-Z][a-z]+\\s[a-z]+$", species)){
     type <- "scientificName"
@@ -47,35 +57,53 @@ bamexplorer_pop <- function(aoi, species, year, version){
     type <- "commonName"
   }
   
-  available_spp <- sppList(version=version, type=type, layer="mean", )
+  # verify users' species have rasters available
+  available_spp <- BAMexploreR::sppList(version=version, type=type, layer="mean")
   
-  if (species == "all"){
-    species <- data(species_list) #call some backend data object that lists all of the species
-  }
-
-  if (all(species %in% data(species_list)) == FALSE){ #call some backend data object ("species_list") that lists all of the species
-    stop("`species =` must have valid names; see `data(species_list)` for spellings")
-  }
-  
-  # validate users' time frames
-  if (year == "all"){
-    year <- as.character(seq(1985, 2020, by=5))
+  if (all(species %in% available_spp) == FALSE){ 
+    stop("some raster data were not found for the specified arguments. Check spellings and/or run `sppList()` to confirm your species are available.")
   } 
   
+  # change type to FLBCs
+  # load `spp.List`
+  load(system.file("R/sysdata.rda", package = "BAMexploreR")) 
+  spp.List <-
+    spp.List |> 
+    dplyr::rename(species_code = code)
+  
+  
+  # associate FLBCs with names
+  flbcs <- 
+    species |> 
+    dplyr::as_tibble(.name_repair = ~type) |> 
+    dplyr::left_join(spp.List, by=type) |> 
+    dplyr::select(species_code)
+  
+  # validate users' time frames
   if (all(year %in% as.character(seq(1985, 2020, by=5))) == FALSE){ 
     stop("`year =` must be a `character` with value(s) between \"1985\" and \"2020\", in increments of 5 years")
   } 
-  #stopifnot()
+  
+  
+  # for testing:
+  gd.list <- list()
+  for (f in 1:nrow(flbcs)){
+  
+  gd.list[[f]] <- 
+    googledrive::drive_ls("https://drive.google.com/drive/u/1/folders/1s3HB1eMCSC8n6ALa8SjUiOaBxIgb-YnN", pattern=flbcs$species_code[f], recursive=TRUE)
+  
+  }
+  
   for (s in 1:length(species)){
 
   # 1. convert `species` and `year` args to a character vector
-  # 2. search relevant folder for rasters with strings that match species and year (see ebirdst for how to host rasters)
+  # 2. search relevant folder for rasters with strings that match species and year
   # 3. loop across species and years to make density estimations
   
-  # CHANGE TO N=3 when averaged rasters are available, and consider downstream effects on this function
+  # CHANGE TO n=3 when averaged rasters are available, and consider downstream effects on this function
   # split file names into 4 labels: species, bcr, bootstrap (won't be included in averaged rasters), year
   # `files` has to be able to connect to some cloud drive (cf ebirdst) to search for relevant rasters
-  raster_labels <- stringr::str_split_fixed(files, "_", n=4)
+  raster_labels <- stringr::str_split_fixed(files, "-", n=4)
     
     
   outer(species, year, as.matrix)
@@ -86,9 +114,15 @@ bamexplorer_pop <- function(aoi, species, year, version){
     terra::values() |>
     sum(na.rm = TRUE)
 
-
+  
   } # close loop
-} 
+
+  results <- tibble(species = species, population_estimate = )
+  return(results)
+  
+} # close function
+
+
   
 
   
