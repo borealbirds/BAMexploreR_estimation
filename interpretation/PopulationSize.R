@@ -36,24 +36,35 @@ devtools::load_all(path="C:/Users/mannf/Proton Drive/mannfredboehm/My files/Driv
 googledrive::drive_auth(scopes = "https://www.googleapis.com/auth/drive.readonly")
 
 # connect to BAM Drive to use an example raster (simulating a masked raster that would come out of Melina's function)
-#root <- "G:/Shared drives/BAM_NationalModels5"
-#test <- terra::rast(x=file.path(root, "output", "mosaics", "extrapolation", "BAWW_8_2020.tiff"))
+root <- "G:/Shared drives/BAM_NationalModels5"
+#raster <- terra::rast(x=file.path(root, "output", "mosaics", "predictions", "BAWW_10_2020.tiff"))
+#raster <- terra::rast(x=file.path(root, "output", "mosaics", "predictions", "GWWA_2_2015.tiff"))
+raster <- terra::rast(x="G:/Shared drives/BAM_NationalModels4/NationalModels4.0/Feb2020/artifacts/CAWA/pred-CAWA-CAN-boot-7.tif")
 
 # since the resolution of the raster is 1000×1000 meters, each cell represents 1,000,000 square meters (1 km2).
-test <- BAMexploreR::getlayerNM(spList="BAOR", version="v4", layer="mean", destfile="C:/Users/mannf/Downloads")
+#raster <- BAMexploreR::getlayerNM(spList="BAOR", version="v4", layer="mean", destfile="C:/Users/mannf/Downloads")
 
 
 bamexplorer_pop <- function(raster, version){
   
   # CHANGE TO n=3 when averaged rasters are available, and consider downstream effects on this function
   # split file name into 4 labels: species, bcr, bootstrap (won't be included in averaged rasters), year
-  raster_labels <- stringr::str_split_fixed(files, "-", n=4)
+  #raster_labels <- stringr::str_split_fixed(files, "-", n=4)
     
   # get values per raster cell then sum across all cells
-  # multiply pixel values (#birds) by 100 ha/pixel to give X bird*ha per pixel
-  popperpixel <-     terra::values(raster[[1]])*100 
-  sum(popperpixel, na.rm = TRUE)
-
+  # multiply pixel values (#birds/pixel) by 100 ha/pixel to give bird*ha per pixel
+  #raster[is.infinite(raster)] <- NA
+  cawa_sum <- sum(terra::values(raster)*100, na.rm=TRUE) # 5.05 Million males, comparable to CAWA on borealbirds.io: 4.81 (4.59 — 5.21)
+  
+  # density (see below for area calculations)
+  cawa_sum/total_area_ha # 0.0069, comparable to CAWA on borealbirds.io: 0.0077 (0.0074 — 0.0084)
+  
+# 2020
+# BAWW_6 = 296362.7
+# BAWW_9 = 322455.8
+# BAWW_8 = 295143.6
+# BAWW_10 = 302547
+  
   
   } # close loop
 
@@ -62,10 +73,20 @@ bamexplorer_pop <- function(raster, version){
   
 } # close function
 
+# AREA CALC
+# convert square meters to square kilometers
+# 1. get the resolution of the raster (should be 1000x1000 meters (1 km^2) per pixel)
+# 2. use `prod` to get pixel area (length x width) in 1000s of meters
+# 1000m x 1000m = 1e6 square meters = 1 km^2, so divide by 1e6 to get pixels per km^2
+pixel_area_km2 <- prod(terra::res(raster))/1e6 # result: 1 pixel/km^2
+valid_pixels <- sum(!is.na(values(raster)))
 
-  
+total_area_Mkm2 <- (valid_pixels * pixel_area_km2)/1e6 #7.29 Million km^2 (compared to 6.21 at https://borealbirds.github.io/species/CAWA/)
 
-  
+# convert Mkm² to hectares
+# 1 km^2 = 100 ha, so:
+# 1 million km^2 = 100 million hectares (ha).
+total_area_ha <- total_area_Mkm2 * 100e6  
   
   
   
