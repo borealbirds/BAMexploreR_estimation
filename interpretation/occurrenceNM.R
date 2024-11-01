@@ -36,19 +36,16 @@ occurrenceNM <- function(raster, threshold, plot=FALSE){
   # retrieve density per pixel
   dpp <- terra::values(raster)
 
-  # identify NAs 
-  na_index <- which(!is.na(dpp))
-
   # remove NAs for `lorenz()`
-  dpp_clean2 <- dpp[!is.na(dpp)]
+  dpp_no_nas <- dpp[!is.na(dpp)]
   
   # generate the Lorenz curve
-  lorenz_fit <- lorenz(dpp_clean2, na.last = NA)
+  lorenz_fit <- opticut::lorenz(dpp_no_nas)
   
   # `L` for ordered cumulative abundance quantiles (versus non-cumulative)
   # `threshold` partitions "1-threshold" proportion of values as presence (1) and the rest ("threshold") as absence (0)
   # e.g. for `threshold=0.8` the densest 20% of values are assigned as presence (1) and the rest as absence (0)
-  current_threshold <- quantile(lorenz_fit, probs = threshold, type = "L")
+  current_threshold <- opticut:::quantile.lorenz(lorenz_fit, probs = threshold, type = "L")
   
   # assign pixels 1 or 0 based on the current threshold
   # preserve NA positions from the original raster to maintain raster range between input and output
