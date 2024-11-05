@@ -31,8 +31,19 @@ library(terra)
 library(parallel)
 cl <- makeCluster(4)
 
+
+# Set the robust log-likelihood option
+options(ocoptions = list(
+  collapse = "_",
+  check_comb = TRUE,
+  scale = "linear",
+  try_error = TRUE,
+  robust_loglik = TRUE  # Enables the safeguard for ill-defined likelihoods
+))
+
 # not sure which folder to use for the V4 models, sorry if this is random!
-raster <- terra::rast(x="G:/Shared drives/BAM_NationalModels4/NationalModels4.0/bootpred/BBWA-BCR_ALL-boot-MeanRND.tif")
+raster <- terra::rast(x="G:/Shared drives/BAM_NationalModels4/NationalModels4.0/May2020/pred250-ALFL-BCR_10-boot-1.tif")
+raster <- terra::rast(x="G:/Shared drives/BAM_NationalModels4/NationalModels4.0/May2020/pred250-BTNW-BCR_4-boot-19.tif")
 
 occurrenceNM <- function(raster, method=c("opticut", "lorenz"), quantile=NULL, plot=FALSE, ...){
   
@@ -50,22 +61,20 @@ occurrenceNM <- function(raster, method=c("opticut", "lorenz"), quantile=NULL, p
   # find optimal threshold based on user's specified method
   if (method == "opticut") {
    
-    # subset predictions for faster computing (`sset=` argument in `opticut()` isn't working)
-    sset <- sample(seq_along(dpp_no_nas), size = 15000)
-    
-    # create placeholder vector with an initial guess at the presence-absence split (median), 
-    # this provides opticut() with an intial binary parition while it searches for a more accurate threshold.
-    response <- as.numeric(dpp_no_nas[sset] > median(dpp_no_nas))
+    # subset pixel-level predictions for faster computing (`sset=` argument in `opticut()` isn't working)
+    subset <- sample(seq_along(dpp_no_nas), size = 2000)
+    pixel_densities <- dpp_no_nas[subset]
     
     # treat each pixel as a stratum (a column in `Z` used by .opticut1())
-    strata <- as.factor(seq_along(sset))  
+    strata <- as.factor(seq_along(subset))  
     
     # .opticut1() computes the log-likelihood ratio (LLR) for a given threshold compared to a null model (where no threshold is applied).
     # the model with the highest LLR is the best at separating high-density (presence) pixels from low-density (absence) pixels
-    opticut_result <- opticut::opticut(response ~ dpp_no_nas[sset], strata = strata, dist = "binomial", cl = cl)
+    opticut_result <- opticut::opticut(Y = pixel_densities, strata = strata, dist = "binomial", cl = cl)
     
   
     # extract the threshold based on the optimal partition (maximum log likelihood ratio)
+    # mu0 is the expected value of group 1 (absence), mu1 is the expected value of group 2 (presence)
     max_llr <- which.max(opticut_result$species[[1]]$logLR)
     optimum_threshold <- opticut_result$species[[1]]$mu1[max_llr]
    
@@ -137,3 +146,26 @@ occurrenceNM <- function(raster, method=c("opticut", "lorenz"), quantile=NULL, p
   
   return(binary_raster)
 }
+
+
+
+# Extract log-likelihood values
+log_likelihood_ratios <- opticut_result$species[[1]]$logLR
+
+# Print a summary of the log-likelihoods to understand their range
+summary(log_likelihood_ratios)
+
+# Plot the subsetted raster
+raster_df <- as.data.frame(raster, xy = TRUE)
+colnames(raster_df)[3] <- "value" 
+subset_raster_df <- raster_df |>  filter(row_number() %in% sset)
+
+ggplot(raster_df,aes(x = x, y = y, fill = value)) +
+  # Background layer: Full raster
+  geom_raster()+
+  scale_fill_viridis_c() +
+  # Overlay layer: Subset of raster
+  geom_tile(data = subset_raster_df, aes(x = x, y = y), fill = "red", width = 5000, height = 5000) +
+  
+  labs(title = "Subset Overlay on Original Raster", x = "Longitude", y = "Latitude") +
+  theme_minimal()
