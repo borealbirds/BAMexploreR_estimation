@@ -6,24 +6,21 @@
 
 #NOTES################################
 
-# This script extracts covariate contributions to model predictions, and also synthesizes various trait databases.
+# This script extracts covariate contributions to model predictions, (VERSION 5) and also synthesizes various trait databases.
 
 # The outputs will be analysed for identifying covariates of importance across several metrics (e.g. BCR, ecology, etc.).
 
 # This script generates the exported data for R package functions that summarise covariate performance. 
 
 
-
-#PREAMBLE############################
-
-#1. Attach packages----
+# Attach packages----
 library(gbm)
 library(RcppAlgos)
 library(tidyverse)
 
 
 
-#2. Create a list of dataframes containing relative influence per covariate----
+# Create a list of dataframes containing relative influence per covariate----
 #   Every list element represents a bootstrap sample 
 
 # connect to BAM Drive and find bootstrap files 
@@ -36,6 +33,7 @@ gbm_objs <- list.files(file.path(root, "output", "bootstraps"))[1:5]
 
 # import extraction lookup table to obtain covariate classes (`var_class`)
 # lookup table is missing "Year" and "Method", so manually adding here
+# output is a tibble with columns `var` and corresponding `var_class`
 varclass_lookup <- readxl::read_xlsx(file.path(root, "NationalModels_V5_VariableList.xlsx"), sheet="ExtractionLookup") |>
   dplyr::select(Category, Label) |> 
   dplyr::rename(var_class = Category, var = Label) |> 
@@ -82,7 +80,6 @@ for(i in 1:length(gbm_objs)){
 
 # mergelist of dataframes
 bam_covariate_importance <- suppressMessages(purrr::reduce(covs, full_join))
-saveRDS(gbm_objs,  file="C:/Users/mannf/Proton Drive/mannfredboehm/My files/Drive/gbm_objs.rds")
 
 
 #3. Create list of bcr x species x covariate permutations (with bootstraps)----

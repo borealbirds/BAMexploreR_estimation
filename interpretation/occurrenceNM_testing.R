@@ -1,13 +1,49 @@
-library(tidyverse)
+
+#1. attach packages----
+print("* attaching packages on master *")
+library(dplyr)
+library(readr)
 library(opticut)
 library(terra)
-
-
-root <- "G:/Shared drives/BAM_NationalModels4/NationalModels4.0/Feb2020/artifacts"
-priority_species <- read_csv(file="G:/Shared drives/BAM_NationalModels5/data/priority_spp_with_model_performance.csv")
+library(parallel)
 
 
 
+#2. define local or cluster
+test <- FALSE
+cc <- TRUE
+
+#3. set number of tasks for local vs cluster----
+if(cc){ n_tasks <- 32}
+if(!cc | test){ n_tasks <- 4}
+
+
+#4. create and register clusters----
+# creates 64 copies of R running in parallel via 64 tasks, on one of the cluster's sockets (processors). 
+# Belgua has ~965 nodes
+print("* creating clusters *")
+cl <- makePSOCKcluster(n_tasks, type="PSOCK")
+
+# print number of tasks and host name for confirmation
+cl
+
+
+#5. set root path----
+print("* setting root file path *")
+
+if(!cc){root <- "G:/Shared drives/BAM_NationalModels4/NationalModels4.0/Feb2020/artifacts"}
+if(cc){root <- "/home/mannfred/scratch/mean_rasters_v4"}
+
+# print for confirmation
+root
+
+tmpcl <- clusterExport(cl, c("root"))
+
+# prep some data and functions and export to cluster
+priority_species <- read_csv(file.path(root, "priority_spp_with_model_performance.csv"))
+flbc <- priority_species$species_code
+
+# this function computes the optimum 1/0 threshold for a given species
 testoccurrenceNM <- function(raster, method=c("opticut", "lorenz"), subset=NULL, quantile=NULL, plot=FALSE, ...){
   
   # choices are obtained from a default setting for the formal argument `arg` 
@@ -80,39 +116,63 @@ testoccurrenceNM <- function(raster, method=c("opticut", "lorenz"), subset=NULL,
 
 
 
-flbc <- priority_species$species_code
-list1 <- list()
-
-for (i in 1:length(flbc)){
-  
-  current_path <- file.path(root, flbc[i], paste0("pred-", flbc[i], "-CAN-Mean.tif"))
+# this function loads in a raster, applies `testoccurrenceNM`, and organizes the output
+process_species <- function(species_code) {
+  current_path <- file.path(root, paste0("pred-", species_code, "-CAN-Mean.tif"))
   
   if (file.exists(current_path)) {
-    
-    raster <- terra::rast(x=file.path(root, flbc[i], paste0("pred-", flbc[i], "-CAN-Mean.tif")))
- 
-    list1[[i]] <- testoccurrenceNM(raster=raster, method = "lorenz")
-  
-  } else { list1[[i]] <- data.frame(optimum_threshold=NA, og_sum=NA, retained_sum=NA) }
-  
-  print(paste("iteration", i))
-
+    print(paste("now working on", current_path))
+    raster <- terra::rast(x = current_path)
+    return(testoccurrenceNM(raster = raster, method = "opticut", subset=500))
+  } else {
+    return(data.frame(optimum_threshold = NA, og_sum = NA, retained_sum = NA))
+    print(paste("could not find", current_path))
+  }
 }
 
-  
-df <- 
-  purrr::list_rbind(list1) |> 
-  mutate(flbc = flbc) |> 
+
+
+
+tempcl <- clusterExport(cl, c("root", "flbc", "testoccurrenceNM", "process_species"))
+
+
+#6. attach packages on clusters----
+# `clusterEvalQ` evaluates a literal expression on each cluster node. 
+print("* Loading packages on workers *")
+
+tmpcl <- clusterEvalQ(cl, library(opticut))
+tmpcl <- clusterEvalQ(cl, library(terra))
+tmpcl <- clusterEvalQ(cl, library(dplyr))
+
+
+print("* starting parallel processing *")
+list1 <- parLapply(cl=cl, X=flbc[1:2], fun=process_species)
+
+stopCluster(cl)
+print("* cluster stopped *")
+
+print("*saving list1*")
+saveRDS(list1, file=file.path(root, "list1.rds"))
+
+if(cc){ q() }
+
+list1 <- readRDS(file.path("C:/Users/mannf/Proton Drive/mannfredboehm/My files/Drive/BAMexploreR_estimation/interpretation/list1_opticut2500.rds"))
+
+df <-
+  purrr::list_rbind(list1) |>
+  mutate(flbc = flbc) |>
   as_tibble()
 
-# plot with flbc as labels
+#plot with flbc as labels
 ggplot(df, aes(x = og_sum, y = retained_sum, label = flbc)) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "blue") +  # 1:1 line
-  geom_text(size = 3) +  # avoid overlapping labels
-  labs(
-    x = "sum of original pixels",
-    y = "sum of retained pixels"
-  ) +
+  geom_text(size = 3) +
+  geom_smooth(method = "lm", color = "pink", se =FALSE, linetype = "solid") +
+  labs(x = "sum of original pixels", y = "sum of retained pixels") +
   scale_x_continuous(labels = scales::label_comma()) +  # format x-axis with commas
-  scale_y_continuous(labels = scales::label_comma())+ 
+  scale_y_continuous(labels = scales::label_comma())+
   theme_minimal()
+
+# get slope
+lmfit <- lm(retained_sum ~ og_sum, data = df)
+coef(lmfit)[2]
