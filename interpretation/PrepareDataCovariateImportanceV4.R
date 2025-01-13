@@ -180,10 +180,15 @@ covariate_importance_zeroed <-
   dplyr::left_join(nice_var_names, by = "var") |> # append more interpretable variable names
   dplyr::arrange(spp, bcr, desc(mean_rel_inf))
 
-saveRDS(covariate_importance_zeroed, file=file.path(root, "covariate_importance_v4.rds"))
+saveRDS(covariate_importance_zeroed, file=file.path(root, "bam_covariate_importance_v4.rds"))
 
 
-
+# `bam_covariate_importance_v4` is a `data.frame` with rows as the mean relative influence (of 32 bootstraps) of a model covariate for a given species x BCR. 
+# There are 7 columns: `spp` gives the Four-Letter Bird Code indicating the species, `bcr` is the Bird Conservation Region, and `var` is the covariate.
+# `mean_rel_inf` and `sd_rel_inf` are the mean and standard deviation of the covariate relative influence across 32 bootstraps. When a covariate was absent from
+# one (or more) of the 32 bootstraps, it was considered as having a relative influence of zero for that bootstrap (thus lowering the mean). 
+# `n_boots` indicates how many bootstraps the given covariate appeared in. `var_class` denotes a broad variable class to which the covariate belongs. 
+# The code used to generate this dataset can be found in "PrepareDataCovariateImportanceV4.R"
 
 
 
