@@ -21,8 +21,8 @@ library(tidyverse)
 
 
 #2. setup local or cluster----
-test <- FALSE
-cc <- TRUE
+test <- TRUE
+cc <- FALSE
 
 # set number of tasks for local vs cluster
 if(cc){ n_tasks <- 25}
@@ -41,7 +41,7 @@ cl
 # set root path
 print("* setting root file path *")
 
-if(!cc){root <- "G:/My Drive"}
+if(!cc){root <- "G:/Shared drives/BAM_NationalModels5/output/bootstraps"}
 if(cc){root <- "/home/mannfred/scratch"}
 
 print(paste("* currently working out of ", root, " *"))
@@ -55,8 +55,8 @@ invisible(clusterEvalQ(cl, library(tidyverse)))
 
 
 #3. access gbm objects and append spp/bcr/boot info----
-gbm_objs <- list.files(file.path(root, "v5_bootstraps"), pattern = "*\\.R", full.names = TRUE)
-# (\(x) x[1:3])()
+gbm_objs <- list.files(file.path(root), pattern = "*\\.R", full.names = TRUE, recursive = TRUE) |> 
+(\(x) x[1:3])()
 print(paste("* Found", length(gbm_objs), " files *"))
 print(head(gbm_objs))
 
@@ -66,6 +66,7 @@ print(head(gbm_objs))
 #4. extract the species (FLBC), BCR, and bootstrap replicate from `gbm_objs`----
 sample_id <- 
   gbm_objs |> 
+  basename() |> 
   stringr::str_split_fixed(pattern="_", n=3) |> 
   gsub("\\.R", "", x = _) |>
   tibble::as_tibble() |> 
@@ -150,24 +151,23 @@ saveRDS(bam_covariate_importance_v5, file=file.path(root, "bam_covariate_importa
 print("* stopping cluster :-)*")
 stopCluster(cl)
 
-if(cc){ q() }
 
 
 #10. post-cluster data cleanup (executed on local machine)----
 
 # remove NULL (invalid model) entries
-bam_covariate_importance_v5_nonull <- bam_covariate_importance_v5[!sapply(bam_covariate_importance_v5, is.null)]
+bam_covariate_importance_nonull_v5 <- bam_covariate_importance_v5[!sapply(bam_covariate_importance_v5, is.null)]
 
 # reduce list of dataframes into a single dataframe
 # took about 15 minutes with a list of 12808 tibbles
-covariate_importance_merged <- suppressMessages(purrr::reduce(bam_covariate_importance_v5_nonull, full_join))
+covariate_importance_merged <- suppressMessages(purrr::reduce(bam_covariate_importance_nonull_v5, full_join))
 
 # THIS IS V4: GET V5!!!
 # import extraction lookup table to obtain covariate classes----
 # (for appending to covariate importance data)
 # lookup table is missing "Year" and "Method", so manually adding here
 nice_var_names <-
-  readr::read_csv(file.path(root, "nice_var_names.csv")) |>
+  readr::read_csv(file.path(root, "nice_var_names_v5.csv")) |>
   dplyr::select(var_class, var)
 
 # check for missing bootstraps and fill in zeros where covariates 
@@ -183,5 +183,7 @@ covariate_importance_zeroed <-
   dplyr::left_join(nice_var_names, by = "var") |> # append more interpretable variable names
   dplyr::arrange(spp, bcr, desc(mean_rel_inf))
 
+saveRDS(covariate_importance_zeroed, file=file.path(root, "bam_covariate_importance_v5.rds"))
 
 
+if(cc){ q() }
