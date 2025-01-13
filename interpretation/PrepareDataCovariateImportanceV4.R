@@ -111,8 +111,7 @@ compute_var_importance <- function(gbm_object) {
       out |>
       gbm::summary.gbm(plotit = FALSE) |>
       as_tibble() |>
-      dplyr::bind_cols(x = _, c(gbm_object["spp"], gbm_object["bcr"], gbm_object["boot"])) |>
-      dplyr::filter(rel.inf >= 1)
+      dplyr::bind_cols(x = _, c(gbm_object["spp"], gbm_object["bcr"], gbm_object["boot"]))
     
     message("Successfully extracted `rel.inf` from: ", gbm_object["file_path"])
     return(importance_df)
@@ -137,23 +136,24 @@ print("* exporting objects and functions to cluster *")
 clusterExport(cl, c("root", "gbm_list", "compute_var_importance"))
 
 
+
 #8. run the covariate importance function in parallel----
 print("* running `compute_var_importance` in parallel` *")
-bam_covariate_importance_v4 <- parLapply(cl, gbm_list, compute_var_importance)
-saveRDS(bam_covariate_importance_v4, file=file.path(root, "bam_covariate_importance_v4.rds"))
+bam_covariate_importance_list_v4 <- parLapply(cl, gbm_list, compute_var_importance)
+saveRDS(bam_covariate_importance_list_v4, file=file.path(root, "bam_covariate_importance_list_v4.rds"))
+
 
 
 #9. stop the cluster----
 print("* stopping cluster :-)*")
 stopCluster(cl)
 
-if(cc){ q() }
 
 
 #10. post-cluster data cleanup (executed on local machine)----
 
 # remove NULL (invalid model) entries
-bam_covariate_importance_v4_nonull <- bam_covariate_importance_v4[!sapply(bam_covariate_importance_v4, is.null)]
+bam_covariate_importance_v4_nonull <- bam_covariate_importance_list_v4[!sapply(bam_covariate_importance_list_v4, is.null)]
 
 # reduce list of dataframes into a single dataframe
 # took about 15 minutes with a list of 12808 tibbles
@@ -176,13 +176,13 @@ covariate_importance_zeroed <-
   dplyr::summarise(mean_rel_inf = mean(rel.inf, na.rm = TRUE),  # calculate mean across all bootstraps (including 0s)
                    sd_rel_inf = sd(rel.inf, na.rm = TRUE),      # calculate standard deviation across all bootstraps (including 0s)
                    n_boots = sum(rel.inf > 0)) |>    # count the number of bootstraps where the variable had non-zero rel.inf
-  dplyr::filter(mean_rel_inf > 0) |> # filter out spp x bcr x var tuples that don't have rel.inf data
+  dplyr::filter(mean_rel_inf >= 1) |> # filter out spp x bcr x var tuples that don't have rel.inf data, AND set threshold of minimum rel.inf of 1 (reduces data size)
   dplyr::left_join(nice_var_names, by = "var") |> # append more interpretable variable names
   dplyr::arrange(spp, bcr, desc(mean_rel_inf))
 
 saveRDS(covariate_importance_zeroed, file=file.path(root, "bam_covariate_importance_v4.rds"))
 
-
+if(cc){ q() }
 # `bam_covariate_importance_v4` is a `data.frame` with rows as the mean relative influence (of 32 bootstraps) of a model covariate for a given species x BCR. 
 # There are 7 columns: `spp` gives the Four-Letter Bird Code indicating the species, `bcr` is the Bird Conservation Region, and `var` is the covariate.
 # `mean_rel_inf` and `sd_rel_inf` are the mean and standard deviation of the covariate relative influence across 32 bootstraps. When a covariate was absent from
