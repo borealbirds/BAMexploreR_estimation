@@ -153,17 +153,17 @@ stopCluster(cl)
 #10. post-cluster data cleanup (executed on local machine)----
 
 # remove NULL (invalid model) entries
-bam_covariate_importance_v4_nonull <- bam_covariate_importance_list_v4[!sapply(bam_covariate_importance_list_v4, is.null)]
+bam_covariate_importance_nonull_v4 <- bam_covariate_importance_list_v4[!sapply(bam_covariate_importance_list_v4, is.null)]
 
 # reduce list of dataframes into a single dataframe
 # took about 15 minutes with a list of 12808 tibbles
-covariate_importance_merged <- suppressMessages(purrr::reduce(bam_covariate_importance_v4_nonull, full_join))
+covariate_importance_merged <- suppressMessages(purrr::reduce(bam_covariate_importance_nonull_v4, full_join))
 
 # import extraction lookup table to obtain covariate classes----
 # (for appending to covariate importance data)
 # lookup table is missing "Year" and "Method", so manually adding here
 nice_var_names <-
-  readr::read_csv(file.path(root, "nice_var_names.csv")) |>
+  readr::read_csv(file.path(root, "v4_bootstraps", "nice_var_names.csv")) |>
   dplyr::select(var_class, var)
 
 # check for missing bootstraps and fill in zeros where covariates 
