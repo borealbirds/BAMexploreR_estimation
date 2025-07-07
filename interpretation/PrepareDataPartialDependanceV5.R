@@ -1,5 +1,5 @@
 # ---
-# title: National Models 4.0 - estimating and ranking 2-way covariate interactions for CONWA and CAWA
+# title: National Models 5.0 - preparing data for partial dependence plot function
 # author: Mannfred Boehm
 # created: September 13, 2024
 # ---
@@ -8,45 +8,62 @@
 
 
 #1. attach packages----
-
-print("* attaching packages on master *")
 library(gbm)
 library(parallel)
 library(tidyverse)
 
 
-#2. set up cluster----
+#2. setup local or cluster----
+test <- FALSE
+cc <- TRUE
+
+# set number of tasks for local vs cluster
+if(cc){ n_tasks <- 32}
+if(!cc | test){ n_tasks <- 4}
 
 # create and register clusters
+# creates `n_tasks` copies of R running in parallel via 32 tasks, on one of the cluster's sockets (processors). 
+# Belgua has ~965 nodes
 print("* creating clusters *")
-n_tasks <- 32
 cl <- makePSOCKcluster(n_tasks, type="PSOCK")
 
 # print number of tasks and host name for confirmation
 cl
 
 # set root path
-root <- "/home/mannfred/projects/def-bayne/NationalModels/06_bootstraps"
+print("* setting root file path *")
+
+if(!cc){root <- "G:/Shared drives/BAM_NationalModels5/output/06_bootstraps"}
+if(cc){root <- "/home/mannfred/projects/def-bayne/NationalModels/06_bootstraps"}
+
 print(paste("* currently working out of ", root, " *"))
 
 
-#3. stage data
+# attach packages on clusters
+# `clusterEvalQ` evaluates a literal expression on each cluster node. 
+print("* Loading packages on workers *")
+invisible(clusterEvalQ(cl, library(gbm)))
+invisible(clusterEvalQ(cl, library(tidyverse)))
 
-gbm_objs <- list.files(path = root, pattern = "\\.Rdata$", full.names = TRUE, recursive = TRUE)
 
-# for testing
-gbm_objs <- gbm_objs[1:3]
-gbm_objs
 
-# import covariate importance data
-load(file="bam_covariate_importance_v5.rda")
-bam_covariate_importance_v5
+#3. access gbm objects and append spp/bcr/boot info----
+gbm_objs <- list.files(file.path(root), pattern = "*\\.Rdata$", full.names = TRUE, recursive = TRUE)
+if(!cc | test) {gbm_objs <- gbm_objs[1:2]}
+
+print(paste("* Found", length(gbm_objs), " files *"))
+print(head(gbm_objs))
+
+# import covariate importance data from "PrepareDataCovariateImportanceV5.R"
+load(file="/home/mannfred/scratch/bam_covariate_importance_v5.rda")
+print("* loading covariate importance data *")
+head(bam_covariate_importance_v5)
 
 # process_gbm takes a path to a .Rdata file containing a list of bootstrap models (`b.list`)
 # and returns a nested list:
 # top-level: each element is a bootstrap replicate (i.e., each model in `b.list`)
 # second-level list: one `data.frame` per covariate, containing the evaluation grid from `plot.gbm()`
-process_gbm <- function(obj_path) {
+evaluate_grid_from_model <- function(obj_path) {
   
   load(obj_path)  # loads b.list
   
@@ -79,12 +96,12 @@ clusterEvalQ(cl, {
   library(stringr)
 })
 
-clusterExport(cl, c("gbm_objs", "process_gbm", "bam_covariate_importance_v5"))
+clusterExport(cl, c("gbm_objs", "evaluate_grid_from_model", "bam_covariate_importance_v5"))
 
 
 #7. run the function in parallel----
 print("* running `process_gbm` in parallel *")
-boot_pts <- parLapply(cl = cl, X = gbm_objs, fun = process_gbm)
+boot_pts <- parLapply(cl = cl, X = gbm_objs, fun = evaluate_grid_from_model)
 
 
 #8. stop the cluster----
