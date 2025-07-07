@@ -26,7 +26,7 @@ cl <- makePSOCKcluster(n_tasks, type="PSOCK")
 cl
 
 # set root path
-root <- "/home/mannfred/scratch"
+root <- "/home/mannfred/projects/def-bayne/NationalModels/06_bootstraps"
 print(paste("* currently working out of ", root, " *"))
 
 

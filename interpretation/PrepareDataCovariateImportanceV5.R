@@ -25,7 +25,7 @@ test <- FALSE
 cc <- TRUE
 
 # set number of tasks for local vs cluster
-if(cc){ n_tasks <- 25}
+if(cc){ n_tasks <- 32}
 if(!cc | test){ n_tasks <- 4}
 
 # create and register clusters
@@ -41,8 +41,8 @@ cl
 # set root path
 print("* setting root file path *")
 
-if(!cc){root <- "G:/Shared drives/BAM_NationalModels5/output/bootstraps"}
-if(cc){root <- "/home/mannfred/scratch"}
+if(!cc){root <- "G:/Shared drives/BAM_NationalModels5/output/06_bootstraps"}
+if(cc){root <- "/home/mannfred/projects/def-bayne/NationalModels/06_bootstraps"}
 
 print(paste("* currently working out of ", root, " *"))
 
@@ -55,78 +55,89 @@ invisible(clusterEvalQ(cl, library(tidyverse)))
 
 
 #3. access gbm objects and append spp/bcr/boot info----
-gbm_objs <- list.files(file.path(root, "v5_bootstraps"), pattern = "*\\.R$", full.names = TRUE, recursive = TRUE)
+gbm_objs <- list.files(file.path(root), pattern = "*\\.Rdata$", full.names = TRUE, recursive = TRUE)
+if(!cc | test) {gbm_objs <- gbm_objs[1:2]}
+
 print(paste("* Found", length(gbm_objs), " files *"))
 print(head(gbm_objs))
 
 
 
-
 #4. extract the species (FLBC), BCR, and bootstrap replicate from `gbm_objs`----
 sample_id <- 
-  gbm_objs |> 
-  basename() |> 
-  stringr::str_split_fixed(pattern="_", n=3) |> 
-  gsub("\\.R", "", x = _) |>
-  tibble::as_tibble() |> 
-  magrittr::set_colnames(c("spp", "bcr", "boot"))
+  tibble::tibble(
+    spp = str_extract(gbm_objs, "/([^/]+)/[^/]+\\.Rdata$") |> 
+          str_extract("[A-Z]{4}"),
+    bcr = str_extract(basename(gbm_objs), "[a-z]{3}[0-9]{1,2}")
+  ) 
 
 if (exists("sample_id")) {
   print("* successfully constructed sample_id *")
 } else {message("* sample_id not constructed *")}
 
+head(sample_id)
 
 
 #5. create master dataframe with indexing info----
 # then, convert to list with each dataframe row as a list element 
 # (easier to deal with a list for looping/`apply`ing)
-gbm_data <- tibble(file_path = gbm_objs, spp = sample_id$spp, bcr = sample_id$bcr, boot = sample_id$boot) 
+gbm_data <- tibble(file_path = gbm_objs, spp = sample_id$spp, bcr = sample_id$bcr)
 gbm_list <- split(x=gbm_data, f=seq(nrow(gbm_data)))
-
 
 
 
 #6. define function that creates `bam_covariate_importance` data frame----
 
-
 # this function works on the `gbm_data` data frame:
 # for every gbm object (row) in `gbm_data` it creates a 
 # dataframe describing relative influence per covariate for the given gbm object
 # the output is a list with elements as rel. inf. dataframes 
-compute_var_importance <- function(gbm_object) {
+compute_var_importance <- function(gbm_list) {
   
-  
-  tryCatch({
+    tryCatch({
     
     # attempt to load the GBM object
-    load(gbm_object[["file_path"]])
+    load(gbm_list[["file_path"]])
     
     # validate gbm object
-    if (!exists("b.i") || is.null(b.i$n.trees) || b.i$n.trees <= 0) {
-      warning(paste("Invalid GBM model in file:", gbm_object["file_path"]))
+    if (!exists("b.list")) {
+      warning(paste("Invalid b.list model in file:", gbm_list["file_path"]))
       return(NULL)
     } else {
-      message("Successfully loaded: ", gbm_object["file_path"])
+      message("Successfully loaded: ", gbm_list["file_path"])
     }
     
-    # compute variable importance
-    # to reduce file size, filter for rel.inf >= 1
-    importance_df <-
-      b.i |>
-      gbm::summary.gbm(plotit = FALSE) |>
-      as_tibble() |>
-      dplyr::bind_cols(x = _, c(gbm_object["spp"], gbm_object["bcr"], gbm_object["boot"]))
+    # define a function to compute variable importance from a list of gbm objects
+    gbm_summary <- function(i) {
+      
+      model <- b.list[[i]]
+      
+      if (!inherits(model, "gbm") || is.null(model$n.trees) || model$n.trees <= 0) {
+        return(NULL)
+      }
+      
+      gbm::summary.gbm(model, plotit = FALSE) |>
+        as_tibble() |>
+        dplyr::bind_cols(x = _, c(gbm_list["spp"], gbm_list["bcr"], boot = i))
+    }
     
-    message("Successfully extracted `rel.inf` from: ", gbm_object["file_path"])
-    return(importance_df)
+    # estimate covariate importance from the current `b.list`
+    out_list <- lapply(seq_along(b.list), gbm_summary)
+    
+    
+    # return all importance data.frames from the current `b.list`
+    out_list <- out_list[!sapply(out_list, is.null)]
+    
+    message("Successfully extracted `rel.inf` from: ", gbm_list["file_path"])
+    return(out_list)
     
     # remove loaded gbm object to free up memory
-    rm(out)
+    rm(b.list)
     gc()
     
     # give instructions to tryCatch if it runs into an error
   }, error = function(e) {
-    warning(paste("Error processing", gbm_object["file_path"], ":", e$message))
+    warning(paste("Error processing", gbm_list["file_path"], ":", e$message))
     return(NULL) 
     
   }) # close tryCatch
@@ -143,7 +154,8 @@ clusterExport(cl, c("root", "gbm_list", "compute_var_importance"))
 #8. run the covariate importance function in parallel----
 print("* running `compute_var_importance` in parallel` *")
 bam_covariate_importance_v5 <- parLapply(cl, gbm_list, compute_var_importance)
-saveRDS(bam_covariate_importance_v5, file=file.path(root, "bam_covariate_importance_list_v5.rds"))
+names(bam_covariate_importance_v5) <- paste(gbm_data$spp, gbm_data$bcr, sep="_")
+saveRDS(bam_covariate_importance_v5, file=file.path("/home/mannfred/scratch/", "bam_covariate_importance_list_v5.rds"))
 
 
 #9. stop the cluster----
@@ -154,36 +166,35 @@ stopCluster(cl)
 
 #10. post-cluster data cleanup (executed on local machine)----
 
-# remove NULL (invalid model) entries
-bam_covariate_importance_nonull_v5 <- bam_covariate_importance_v5[!sapply(bam_covariate_importance_v5, is.null)]
-
-# reduce list of dataframes into a single dataframe
-# took about 15 minutes with a list of 12808 tibbles
-covariate_importance_merged <- suppressMessages(purrr::reduce(bam_covariate_importance_nonull_v5, full_join))
-
 # import extraction lookup table to obtain covariate classes----
 # (for appending to covariate importance data)
 # lookup table is missing "Year" and "Method", so manually adding here
 nice_var_names <-
-  readr::read_csv(file.path(root, "v5_bootstraps", "nice_var_names_v5.csv")) |>
+  readr::read_csv(file.path("/home/mannfred/scratch/nice_var_names_v5.csv")) |>
   dplyr::select(var_class, var) |> 
   dplyr::distinct(var, .keep_all=TRUE)
 
-# check for missing bootstraps
-# we do not fill in zeros like the v4 script because all covs are in all boostraps 
-# are missing from a bootstrap
-covariate_importance_zeroed <-
-  covariate_importance_merged |>
-  dplyr::mutate(boot = as.integer(boot)) |> # change `chr` to `int`
-  dplyr::group_by(spp, bcr, var) |>
-  dplyr::summarise(mean_rel_inf = mean(rel.inf, na.rm = TRUE),  # calculate mean across all bootstraps (including 0s)
-                   sd_rel_inf = sd(rel.inf, na.rm = TRUE),      # calculate standard deviation across all bootstraps (including 0s)
-                   n_boots = sum(rel.inf > 0)) |>    # count the number of bootstraps where the variable had non-zero rel.inf
-  dplyr::filter(mean_rel_inf >= 1) |> # filter out spp x bcr x var tuples with mean rel.inf <= 1
+# combine all bootstraps per spp x bcr tuple
+# imap applies a function to each element of a vector, and its index
+merged_by_sppbcr <- 
+  purrr::imap(bam_covariate_importance_v5, ~ bind_rows(.x)) |>  # merge 2nd level lists of tibbles for each spp x bcr tuple
+  list_rbind()  # merge top level lists of tibbles into one master data frame
+
+# get mean and SD covariate importance per species x bcr x var tuple
+bam_covariate_importance_means_v5 <- 
+  merged_by_sppbcr |> 
+  dplyr::group_by(spp, bcr, var) |> 
+  dplyr::summarise(
+    mean_rel_inf = mean(rel.inf, na.rm = TRUE),
+    sd_rel_inf   = sd(rel.inf, na.rm = TRUE),
+    n_boots = sum(rel.inf > 0),
+    .groups = "drop") |> 
   dplyr::left_join(nice_var_names, by = "var") |> # append more interpretable variable names
   dplyr::arrange(spp, bcr, desc(mean_rel_inf))
 
-saveRDS(covariate_importance_zeroed, file=file.path(root, "bam_covariate_importance_v5.rds"))
+
+
+save(bam_covariate_importance_means_v5, file=file.path("/home/mannfred/scratch/bam_covariate_importance_v5.rda"))
 
 
 if(cc){ q() }

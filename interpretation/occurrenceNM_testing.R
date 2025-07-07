@@ -79,7 +79,7 @@ testoccurrenceNM <- function(raster, method=c("opticut", "lorenz"), subset=NULL,
     
     # .opticut1() computes the log-likelihood ratio (LLR) for a given threshold compared to a null model (where no threshold is applied).
     # the model with the highest LLR is the best at separating high-density (presence) pixels from low-density (absence) pixels
-    opticut_result <- opticut::opticut(Y = pixel_densities, strata = strata, dist = "binomial", ...)
+    opticut_result <- opticut::opticut(Y = pixel_densities, strata = strata, dist = "gaussian", ...)
     
     
     # extract the threshold based on the optimal partition (maximum log likelihood ratio)
@@ -123,7 +123,7 @@ process_species <- function(species_code) {
   if (file.exists(current_path)) {
     print(paste("now working on", current_path))
     raster <- terra::rast(x = current_path)
-    return(testoccurrenceNM(raster = raster, method = "opticut", subset=500))
+    return(testoccurrenceNM(raster = raster, method = "opticut", subset=5000))
   } else {
     return(data.frame(optimum_threshold = NA, og_sum = NA, retained_sum = NA))
     print(paste("could not find", current_path))
@@ -146,7 +146,7 @@ tmpcl <- clusterEvalQ(cl, library(dplyr))
 
 
 print("* starting parallel processing *")
-list1 <- parLapply(cl=cl, X=flbc[1:2], fun=process_species)
+list1 <- parLapply(cl=cl, X=flbc, fun=process_species)
 
 stopCluster(cl)
 print("* cluster stopped *")
@@ -156,23 +156,23 @@ saveRDS(list1, file=file.path(root, "list1.rds"))
 
 if(cc){ q() }
 
-list1 <- readRDS(file.path("C:/Users/mannf/Proton Drive/mannfredboehm/My files/Drive/BAMexploreR_estimation/interpretation/list1_opticut2500.rds"))
-
-df <-
-  purrr::list_rbind(list1) |>
-  mutate(flbc = flbc) |>
-  as_tibble()
-
-#plot with flbc as labels
-ggplot(df, aes(x = og_sum, y = retained_sum, label = flbc)) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "blue") +  # 1:1 line
-  geom_text(size = 3) +
-  geom_smooth(method = "lm", color = "pink", se =FALSE, linetype = "solid") +
-  labs(x = "sum of original pixels", y = "sum of retained pixels") +
-  scale_x_continuous(labels = scales::label_comma()) +  # format x-axis with commas
-  scale_y_continuous(labels = scales::label_comma())+
-  theme_minimal()
-
-# get slope
-lmfit <- lm(retained_sum ~ og_sum, data = df)
-coef(lmfit)[2]
+# list1 <- readRDS(file.path("C:/Users/mannf/Proton Drive/mannfredboehm/My files/Drive/BAMexploreR_estimation/interpretation/list1_opticut.rds"))
+# 
+# df <-
+#   purrr::list_rbind(list1) |>
+#   mutate(flbc = flbc) |>
+#   as_tibble()
+# 
+# #plot with flbc as labels
+# ggplot(df, aes(x = og_sum, y = retained_sum, label = flbc)) +
+#   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "blue") +  # 1:1 line
+#   geom_text(size = 3) +
+#   geom_smooth(method = "lm", color = "pink", se =FALSE, linetype = "solid") +
+#   labs(x = "sum of original pixels", y = "sum of retained pixels") +
+#   scale_x_continuous(labels = scales::label_comma()) +  # format x-axis with commas
+#   scale_y_continuous(labels = scales::label_comma())+
+#   theme_minimal()
+# 
+# # get slope
+# lmfit <- lm(retained_sum ~ og_sum, data = df)
+# coef(lmfit)[2]
