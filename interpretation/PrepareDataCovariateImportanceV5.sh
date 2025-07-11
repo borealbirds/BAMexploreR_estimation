@@ -14,17 +14,3 @@ module load r/4.4.0
 
 export NODELIST=$(echo $(srun hostname))
 Rscript --vanilla PrepareDataCovariateImportanceV5.R
-
-
-
-#Job ID: 63606997
-#Cluster: cedar
-#User/Group: mannfred/mannfred
-#State: COMPLETED (exit code 0)
-#Nodes: 1
-#Cores per node: 32
-#CPU Utilized: 05:15:00
-#CPU Efficiency: 72.92% of 07:12:00 core-walltime
-#Job Wall-clock time: 00:13:30
-#Memory Utilized: 160.72 GB
-#Memory Efficiency: 85.95% of 187.00 GB (187.00 GB/node)

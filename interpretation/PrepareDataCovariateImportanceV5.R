@@ -164,9 +164,9 @@ stopCluster(cl)
 
 
 
-#10. post-cluster data cleanup----
+#10. post-cluster data cleanup (executed on local machine)----
 
-# import extraction lookup table to obtain covariate classes
+# import extraction lookup table to obtain covariate classes----
 # (for appending to covariate importance data)
 # lookup table is missing "Year" and "Method", so manually adding here
 nice_var_names <-
