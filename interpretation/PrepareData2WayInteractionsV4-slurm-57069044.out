@@ -1,0 +1,36 @@
+Lmod has detected the following error: These module(s) or extension(s) exist
+but cannot be loaded as requested: "flexiblas", "gcc/9.3.0"
+   Try: "module spider flexiblas gcc/9.3.0" to see how to load the module(s).
+
+
+
+Lmod has detected the following error: These module(s) or extension(s) exist
+but cannot be loaded as requested: "gdal/3.5.1"
+   Try: "module spider gdal/3.5.1" to see how to load the module(s).
+
+
+
+Loaded gbm 2.2.2
+This version of gbm is no longer under development. Consider transitioning to gbm3, https://github.com/gbm-developers/gbm3
+── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+✔ dplyr     1.1.4     ✔ readr     2.1.5
+✔ forcats   1.0.0     ✔ stringr   1.5.1
+✔ ggplot2   3.5.1     ✔ tibble    3.2.1
+✔ lubridate 1.9.3     ✔ tidyr     1.3.1
+✔ purrr     1.0.2     
+── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+✖ dplyr::filter() masks stats::filter()
+✖ dplyr::lag()    masks stats::lag()
+ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
+[1] "* creating clusters *"
+socket cluster with 25 nodes on host ‘localhost’
+[1] "* setting root file path *"
+[1] "* currently working out of  /home/mannfred/scratch  *"
+[1] "* Found  1318  files: *"
+[1] "* successfully loaded BAMdb-GNMsubset data from:  /home/mannfred/scratch  *"
+[1] "* exporting gbm_objs and functions to cluster *"
+[1] "* running `process_gbm` in parallel *"
+Error in checkForRemoteErrors(val) : 
+  11 nodes produced errors; first error: $ operator is invalid for atomic vectors
+Calls: parLapply ... clusterApply -> staticClusterApply -> checkForRemoteErrors
+Execution halted
